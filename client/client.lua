@@ -108,7 +108,7 @@ Citizen.CreateThread(function()
         Citizen.Wait(1)
     end
 end)
-
+--[[
 Citizen.CreateThread(function()
     for k, v in pairs(Config.Games) do
         local flaghash = GetHashKey(Config.Objects.Flag)
@@ -133,6 +133,7 @@ Citizen.CreateThread(function()
         table.insert(AquiverGolf.Flags, tbl)
     end
 end)
+]]
 
 
 RegisterCommand('GOLF', function()
