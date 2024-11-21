@@ -43,97 +43,110 @@ AquiverGolf.Swing = {
     SwingStrength = 0.005
 }
 
-Citizen.CreateThread(function()
-    while true do
-        Citizen.Wait(50)
-        if AquiverGolf.TaskAnimAv then
-            local access = Config.Clubs[AquiverGolf.ClubSelected].Anims
-            if AquiverGolf.TaskAnimAv == 'Idle' then
-                if not IsEntityPlayingAnim(PlayerPedId(), Config.GolfDict, access.Idle, 3) then
-                    TaskPlayAnim(PlayerPedId(), Config.GolfDict, access.Idle, 8.0, -1000.0, -1, 33, 0.0, false, false, false)
-                end
-            end
-        end
-    end
+if ESX.IsPlayerLoaded() then 
+    Citizen.SetTimeout(100, function()
+        ESX.PlayerLoaded = true
+        ESX.PlayerData = ESX.GetPlayerData()
+        StartInitLoop()
+    end)
+end
+
+RegisterNetEvent('esx:playerLoaded')
+AddEventHandler('esx:playerLoaded', function(playerData, isNew) 
+    ESX.PlayerLoaded = true
+    ESX.PlayerData = playerData
+    StartInitLoop()
 end)
 
-Citizen.CreateThread(function()
-    while true do
-        local letsleep = true
+RegisterNetEvent('esx:onPlayerLogout')
+AddEventHandler('esx:onPlayerLogout', function() 
+    ESX.PlayerLoaded = false
+    ESX.PlayerData = {}
+    --StartOverLoop()
+    pickupLabda()
+end)
 
-        local playerpos = GetEntityCoords(PlayerPedId())
+StartInitLoop = function()
+    StartBlipFlag()
+    --StartBlipGame()
+    StartBallGolfClub()
+end
 
-        for i = 1, #AquiverGolf.Flags, 1 do
-            local flagObj = AquiverGolf.Flags[i].Flag
-            if DoesEntityExist(flagObj) then
-                local dist = #(playerpos - GetEntityCoords(flagObj))
-                if dist < 1.5 then
-                    if AquiverGolf.SelectedFlag.Obj == flagObj then
+
+StartBlipFlag = function()
+    Citizen.CreateThread(function()
+        while ESX.PlayerLoaded do 
+            local letsleep = true
+            local playerpos = GetEntityCoords(PlayerPedId(-1))
+            for i = 1, #AquiverGolf.Flags, 1 do
+                local flagObj = AquiverGolf.Flags[i].Flag
+                if DoesEntityExist(flagObj) then
+                    local dist = #(playerpos - GetEntityCoords(flagObj))
+                    if dist < 1.5 then
                         letsleep = false
-                        ESX.ShowHelpNotification(_U('help_flag_remove'), 1)
-                        if IsControlJustPressed(0, 38) then
-                            if DoesBlipExist(AquiverGolf.SelectedFlag.Blip) then
-                                RemoveBlip(AquiverGolf.SelectedFlag.Blip)
+                        if AquiverGolf.SelectedFlag.Obj == flagObj then
+                            ESX.ShowHelpNotification(_U('help_flag_remove'), 1)
+                            if IsControlJustPressed(0, 38) then
+                                if DoesBlipExist(AquiverGolf.SelectedFlag.Blip) then
+                                    RemoveBlip(AquiverGolf.SelectedFlag.Blip)
+                                end
+                                AquiverGolf.SelectedFlag.Obj = nil
                             end
-                            AquiverGolf.SelectedFlag.Obj = nil
-                        end
-                    else
-                        letsleep = false
-                        ESX.ShowHelpNotification(_U('help_flag_select'), 1)
-
-                        if IsControlJustPressed(0, 38) then
-                            AquiverGolf.SelectedFlag.Obj = flagObj
-
-                            if DoesBlipExist(AquiverGolf.SelectedFlag.Blip) then
-                                RemoveBlip(AquiverGolf.SelectedFlag.Blip)
+                        else
+                            ESX.ShowHelpNotification(_U('help_flag_select'), 1)
+                            if IsControlJustPressed(0, 38) then
+                                AquiverGolf.SelectedFlag.Obj = flagObj
+                                if DoesBlipExist(AquiverGolf.SelectedFlag.Blip) then
+                                    RemoveBlip(AquiverGolf.SelectedFlag.Blip)
+                                end
+                                local crds = GetEntityCoords(flagObj)
+                                local blip = AddBlipForCoord(GetEntityCoords(flagObj))
+                                SetBlipScale(blip, 1.0)
+                                SetBlipSprite(blip, 358)
+                                BeginTextCommandSetBlipName('STRING')
+                                AddTextComponentString(_U('blip_flag'))
+                                EndTextCommandSetBlipName(blip)
+                                AquiverGolf.SelectedFlag.Blip = blip
                             end
-                            local crds = GetEntityCoords(flagObj)
-                            local blip = AddBlipForCoord(GetEntityCoords(flagObj))
-                            SetBlipScale(blip, 1.0)
-                            SetBlipSprite(blip, 358)
-                            BeginTextCommandSetBlipName('STRING')
-                            AddTextComponentString(_U('blip_flag'))
-                            EndTextCommandSetBlipName(blip)
-
-                            AquiverGolf.SelectedFlag.Blip = blip
                         end
                     end
                 end
             end
+            if letsleep then
+                Citizen.Wait(Config.SleeperSecond)
+            else
+                Citizen.Wait(0)
+            end
         end
+    end)
+end
 
-        if letsleep then
-            Citizen.Wait(Config.SleeperSecond)
+
+StartBlipGame = function()
+    Citizen.CreateThread(function()
+        for k, v in pairs(Config.Games) do
+            local flaghash = GetHashKey(Config.Objects.Flag)
+            RequestModel(flaghash)
+            while not HasModelLoaded(flaghash) do
+                Citizen.Wait(1)
+            end
+            local tbl = {}
+            tbl.Flag = CreateObjectNoOffset(flaghash, v.FlagPosition, false, false, true)
+            FreezeEntityPosition(tbl.Flag, true)
+            tbl.FlagBlip = AddBlipForCoord(v.FlagPosition)
+            SetBlipSprite(tbl.FlagBlip, 358)
+            SetBlipScale(tbl.FlagBlip, 0.6)
+            SetBlipAsShortRange(tbl.FlagBlip, true)
+            BeginTextCommandSetBlipName('STRING')
+            AddTextComponentString(_U('blip_flag'))
+            EndTextCommandSetBlipName(tbl.FlagBlip)
+
+            table.insert(AquiverGolf.Flags, tbl)
         end
-        Citizen.Wait(1)
-    end
-end)
---[[
-Citizen.CreateThread(function()
-    for k, v in pairs(Config.Games) do
-        local flaghash = GetHashKey(Config.Objects.Flag)
-        RequestModel(flaghash)
-        while not HasModelLoaded(flaghash) do
-            Citizen.Wait(1)
-        end
+    end)
+end
 
-        local tbl = {}
 
-        tbl.Flag = CreateObjectNoOffset(flaghash, v.FlagPosition, false, false, true)
-        FreezeEntityPosition(tbl.Flag, true)
-
-        tbl.FlagBlip = AddBlipForCoord(v.FlagPosition)
-        SetBlipSprite(tbl.FlagBlip, 358)
-        SetBlipScale(tbl.FlagBlip, 0.6)
-        SetBlipAsShortRange(tbl.FlagBlip, true)
-        BeginTextCommandSetBlipName('STRING')
-        AddTextComponentString(_U('blip_flag'))
-        EndTextCommandSetBlipName(tbl.FlagBlip)
-
-        table.insert(AquiverGolf.Flags, tbl)
-    end
-end)
-]]
 
 
 RegisterCommand('GOLF', function()
@@ -146,32 +159,21 @@ AddEventHandler('avGolf:spawnBall',function(ballModel)
 end)
 
 function spawnBall(ballModel)
-    if DoesEntityExist(AquiverGolf.Ball) then
-        DeleteEntity(AquiverGolf.Ball)
-    end
-    if DoesBlipExist(AquiverGolf.BallBlip) then
-        RemoveBlip(AquiverGolf.BallBlip)
-    end
-
-    if DoesEntityExist(AquiverGolf.BallMarker) then
-        DeleteEntity(AquiverGolf.BallMarker)
-    end
+    if DoesEntityExist(AquiverGolf.Ball)        then DeleteEntity(AquiverGolf.Ball)   end
+    if DoesBlipExist(AquiverGolf.BallBlip)      then RemoveBlip(AquiverGolf.BallBlip) end
+    if DoesEntityExist(AquiverGolf.BallMarker)  then DeleteEntity(AquiverGolf.BallMarker)  end
 
     if not DoesEntityExist(AquiverGolf.Ball) then
         local ballhash = GetHashKey(ballModel)
+        local animDict, animName = 'anim@mp_fireworks', 'place_firework_3_box'
         RequestModel(ballhash)
-        while not HasModelLoaded(ballhash) do
-            Citizen.Wait(1)
-        end
+        RequestAnimDict(animDict)
+        while not HasModelLoaded(ballhash) do  Citizen.Wait(1) end
+        while not HasAnimDictLoaded(animDict) do Citizen.Wait(1) end
 
         local playerpos = GetEntityCoords(PlayerPedId())
         local _, ground = GetGroundZAndNormalFor_3dCoord(playerpos.x, playerpos.y, playerpos.z)
 
-        local animDict, animName = 'anim@mp_fireworks', 'place_firework_3_box'
-        RequestAnimDict(animDict)
-        while not HasAnimDictLoaded(animDict) do
-            Citizen.Wait(1)
-        end
         TaskPlayAnim(PlayerPedId(), animDict, animName, 8.0, -1000.0, -1, 33, 0.0, false, false, false)
         Citizen.Wait(3000)
 
@@ -195,20 +197,14 @@ function spawnBall(ballModel)
         EndTextCommandSetBlipName(AquiverGolf.BallBlip)
 
         spawnGolfMarker()
-        start_ball_marker()
+        StartBallMarker()
     end
 end
 
 function spawnGolfMarker()
-    if DoesEntityExist(AquiverGolf.BallMarker) then
-        DeleteEntity(AquiverGolf.BallMarker)
-    end
-
+    if DoesEntityExist(AquiverGolf.BallMarker) then  DeleteEntity(AquiverGolf.BallMarker)  end
     RequestModel(Config.Objects.Marker)
-    while not HasModelLoaded(Config.Objects.Marker) do
-        Citizen.Wait(1)
-    end
-
+    while not HasModelLoaded(Config.Objects.Marker) do  Citizen.Wait(1) end
     local ballOffset = GetObjectOffsetFromCoords(GetEntityCoords(AquiverGolf.Ball), GetEntityHeading(AquiverGolf.Ball), 0.08, 0.0, 5.0)
     AquiverGolf.BallMarker = CreateObjectNoOffset(Config.Objects.Marker, ballOffset, true, false, true)
     PlaceObjectOnGroundProperly(AquiverGolf.BallMarker)
@@ -236,56 +232,57 @@ function pickupLabda()
     end
 end
 
-start_ball_marker = function()
+StartBallMarker = function()
     while DoesEntityExist(AquiverGolf.Ball) do 
         local ballcoords = GetEntityCoords(AquiverGolf.Ball)
         DrawMarker(3,ballcoords.x,ballcoords.y,ballcoords.z+0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.5 ,0.5 ,0.5,255,255,255,150, 1, 1, 2, 0, 0, 0, 0)     
-        Wait(5)
+        Citizen.Wait(0)
     end
 end
 
 
-Citizen.CreateThread(function()
-    while true do
-        local playerpos = GetEntityCoords(PlayerPedId())
-        local letsleep = true
+StartBallGolfClub = function()
+    Citizen.CreateThread(function()
+        while ESX.PlayerLoaded do 
+            local letsleep = true
+            local playerpos = GetEntityCoords(PlayerPedId(-1))
 
-        if not DoesEntityExist(AquiverGolf.BallSelected) then
-            if DoesEntityExist(AquiverGolf.Ball) then
-                if #(playerpos - GetEntityCoords(AquiverGolf.Ball)) < 1.5 then
-                    letsleep = false
-                    if Config.NeedClubWeapon then
-                        local _, weaponHash = GetCurrentPedWeapon(PlayerPedId(), true)
-
-                        if weaponHash == GetHashKey('weapon_golfclub') then
+            if not DoesEntityExist(AquiverGolf.BallSelected) then
+                if DoesEntityExist(AquiverGolf.Ball) then
+                    if #(playerpos - GetEntityCoords(AquiverGolf.Ball)) < 1.5 then
+                        letsleep = false
+                        if Config.NeedClubWeapon then
+                            local _, weaponHash = GetCurrentPedWeapon(PlayerPedId(), true)
+                            if weaponHash == GetHashKey('weapon_golfclub') then
+                                ESX.ShowHelpNotification(_U('help_select_ball'), 1)
+                                if IsControlJustPressed(0, 38) then
+                                    selectLabda()
+                                elseif IsDisabledControlJustPressed(0, 26) then
+                                    pickupLabda()
+                                end
+                            else
+                                ESX.ShowHelpNotification(_U('help_need_club'), 1)
+                            end
+                        else
                             ESX.ShowHelpNotification(_U('help_select_ball'), 1)
                             if IsControlJustPressed(0, 38) then
                                 selectLabda()
                             elseif IsDisabledControlJustPressed(0, 26) then
                                 pickupLabda()
                             end
-                        else
-                            ESX.ShowHelpNotification(_U('help_need_club'), 1)
-                        end
-                    else
-                        ESX.ShowHelpNotification(_U('help_select_ball'), 1)
-                        if IsControlJustPressed(0, 38) then
-                            selectLabda()
-                        elseif IsDisabledControlJustPressed(0, 26) then
-                            pickupLabda()
                         end
                     end
                 end
             end
-        end
 
-        if letsleep then
-            Citizen.Wait(Config.SleeperSecond)
-        end
+            if letsleep then
+                Citizen.Wait(Config.SleeperSecond)
+            end
 
-        Citizen.Wait(1)
-    end
-end)
+            Citizen.Wait(1)
+        end
+    end)
+end
 
 function startTopCamera()
     local playerCoords = GetEntityCoords(PlayerPedId()) + vector3(0.0, 0.0, 1.5)
@@ -365,46 +362,42 @@ function selectLabda()
 
         FreezeEntityPosition(AquiverGolf.Ball, true)
         changeClub()
-
-        Citizen.CreateThread(
-            function()
-                while DoesEntityExist(AquiverGolf.BallSelected) do
-                    Citizen.Wait(0)
-
-                    if AquiverGolf.Scaleform == nil then
-                        AquiverGolf.Scaleform = RequestScaleformMovie('golf')
-                        while not HasScaleformMovieLoaded(AquiverGolf.Scaleform) do
-                            Citizen.Wait(0)
-                        end
+        Citizen.CreateThread(function()
+            while DoesEntityExist(AquiverGolf.BallSelected) do
+                Citizen.Wait(0)
+                if AquiverGolf.Scaleform == nil then
+                    AquiverGolf.Scaleform = RequestScaleformMovie('golf')
+                    while not HasScaleformMovieLoaded(AquiverGolf.Scaleform) do
+                        Citizen.Wait(0)
                     end
-
-                    if AquiverGolf.Swing.State then
-                        BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_TRANSITION_IN')
-                        EndScaleformMovieMethod()
-
-                        BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_POSITION')
-                        ScaleformMovieMethodAddParamFloat(0.65)
-                        ScaleformMovieMethodAddParamFloat(0.55)
-                        EndScaleformMovieMethod()
-
-                        BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_SET_FILL')
-                        ScaleformMovieMethodAddParamBool(true)
-                        EndScaleformMovieMethod()
-
-                        BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_SET_MARKER')
-                        ScaleformMovieMethodAddParamBool(true)
-                        ScaleformMovieMethodAddParamFloat(AquiverGolf.Swing.Power)
-                        ScaleformMovieMethodAddParamBool(false)
-                        EndScaleformMovieMethod()
-                    else
-                        BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_TRANSITION_OUT')
-                        EndScaleformMovieMethod()
-                    end
-
-                    DrawScaleformMovieFullscreen(AquiverGolf.Scaleform, 255, 255, 255, 255)
                 end
+
+                if AquiverGolf.Swing.State then
+                    BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_TRANSITION_IN')
+                    EndScaleformMovieMethod()
+
+                    BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_POSITION')
+                    ScaleformMovieMethodAddParamFloat(0.65)
+                    ScaleformMovieMethodAddParamFloat(0.55)
+                    EndScaleformMovieMethod()
+
+                    BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_SET_FILL')
+                    ScaleformMovieMethodAddParamBool(true)
+                    EndScaleformMovieMethod()
+
+                    BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_SET_MARKER')
+                    ScaleformMovieMethodAddParamBool(true)
+                    ScaleformMovieMethodAddParamFloat(AquiverGolf.Swing.Power)
+                    ScaleformMovieMethodAddParamBool(false)
+                    EndScaleformMovieMethod()
+                else
+                    BeginScaleformMovieMethod(AquiverGolf.Scaleform, 'SWING_METER_TRANSITION_OUT')
+                    EndScaleformMovieMethod()
+                end
+
+                DrawScaleformMovieFullscreen(AquiverGolf.Scaleform, 255, 255, 255, 255)
             end
-        )
+        end)
 
         Citizen.CreateThread(function()
             while DoesEntityExist(AquiverGolf.BallSelected) do
@@ -470,14 +463,6 @@ function selectLabda()
                     if IsDisabledControlJustPressed(0, Config.Keybinds.Topcam) then
                         startTopCamera()
                     end
-
-                    -- if IsDisabledControlJustPressed(0, Config.Keybinds.Bigmap) then
-                    --     if IsBigmapActive() then
-                    --         SetBigmapActive(false, false)
-                    --     else
-                    --         SetBigmapActive(true, false)
-                    --     end
-                    -- end
                 end
 
                 if IsDisabledControlJustPressed(0, Config.Keybinds.Drawline) then
@@ -500,7 +485,6 @@ function selectLabda()
                 end
 
 
-                -- rendering ball aiming lines
                 if DoesEntityExist(AquiverGolf.Ball) and not AquiverGolf.BallActionGoing then
                     local ballcoords = GetEntityCoords(AquiverGolf.Ball)
                     local ballheading = GetEntityHeading(AquiverGolf.Ball)
@@ -525,7 +509,6 @@ function selectLabda()
                         if Config.NeedClubWeapon then
                             GiveWeaponToPed(PlayerPedId(), GetHashKey('weapon_golfclub'), 1, false, true)
                         end
-                        AquiverGolf.TaskAnimAv = nil
                         AquiverGolf.BallSelected = nil
                         SetTerrainState(false)
                         Citizen.Wait(200)
@@ -541,23 +524,17 @@ end
 function SetPointLines(state)
     AquiverGolf.DrawedLine = state
     if AquiverGolf.DrawedLine then
-        Citizen.CreateThread(
-            function()
-                while AquiverGolf.DrawedLine and DoesEntityExist(AquiverGolf.SelectedFlag.Obj) and DoesEntityExist(AquiverGolf.Ball) do
-                    Citizen.Wait(0)
-
-                    if IsEntityOnScreen(AquiverGolf.Ball) or IsEntityOnScreen(AquiverGolf.SelectedFlag.Obj) then
-                        local ballCoords = GetEntityCoords(AquiverGolf.Ball)
-                        local flagCoords = GetEntityCoords(AquiverGolf.SelectedFlag.Obj)
-
-                        DrawLine(ballCoords.x, ballCoords.y, ballCoords.z + 0.15, flagCoords.x, flagCoords.y, flagCoords.z + 0.15, 255, 255, 255, 155)
-                    end
+        Citizen.CreateThread(function()
+            while AquiverGolf.DrawedLine and DoesEntityExist(AquiverGolf.SelectedFlag.Obj) and DoesEntityExist(AquiverGolf.Ball) do
+                Citizen.Wait(0)
+                if IsEntityOnScreen(AquiverGolf.Ball) or IsEntityOnScreen(AquiverGolf.SelectedFlag.Obj) then
+                    local ballCoords = GetEntityCoords(AquiverGolf.Ball)
+                    local flagCoords = GetEntityCoords(AquiverGolf.SelectedFlag.Obj)
+                    DrawLine(ballCoords.x, ballCoords.y, ballCoords.z + 0.15, flagCoords.x, flagCoords.y, flagCoords.z + 0.15, 255, 255, 255, 155)
                 end
-
-                -- turn off the render thingie, to not bug out and press 5-5 again, if you put the ball out
-                AquiverGolf.DrawedLine = false
             end
-        )
+            AquiverGolf.DrawedLine = false
+        end)
     end
 end
 
@@ -942,7 +919,7 @@ end
 utes = {
     release = function()
         if AquiverGolf.Swing.State then
-            ballCameraAction()
+            --ballCameraAction()
 
             AquiverGolf.Swing.State = false
             Citizen.Wait(150) -- need this for the anim loop check
@@ -1015,15 +992,13 @@ utes = {
                 BallMemory.Particle = StartParticleFxLoopedOnEntity('scr_golf_ball_trail', AquiverGolf.Ball, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, false, false, false)
                 SetParticleFxLoopedColour(BallMemory.Particle, (240.0 / 255.0), (200.0 / 255.0), (80.0 / 255.0), false)
             end
-            Citizen.CreateThread(
-                function()
-                    Citizen.Wait(500)
-                    if DoesParticleFxLoopedExist(BallMemory.Particle) then
-                        RemoveParticleFx(BallMemory.Particle)
-                        BallMemory.Particle = nil
-                    end
+            Citizen.CreateThread(function()
+                Citizen.Wait(500)
+                if DoesParticleFxLoopedExist(BallMemory.Particle) then
+                    RemoveParticleFx(BallMemory.Particle)
+                    BallMemory.Particle = nil
                 end
-            )
+            end)
 
             ballActionRender()
 
@@ -1044,34 +1019,27 @@ utes = {
         end
     end,
     swing = function()
-        AquiverGolf.TaskAnimAv = nil
         AquiverGolf.Swing.State = true
 
         local d = 'mini@golf'
         RequestAnimDict(d)
-        while not HasAnimDictLoaded(d) do
-            Citizen.Wait(1)
-        end
+        while not HasAnimDictLoaded(d) do Citizen.Wait(1)  end
 
         Citizen.CreateThread(function()
             while AquiverGolf.Swing.State do
                 Citizen.Wait(5)
-
                 -- ClearAreaOfPeds(GetEntityCoords(PlayerPedId()), 400.0, 0)
                 -- ClearAreaOfVehicles(GetEntityCollisonDisabled(PlayerPedId()), 400.0, false, false, false, false, false, false)
-
                 requestGolfDict()
                 local animName = Config.Clubs[AquiverGolf.ClubSelected].Anims.Intro
                 if not IsEntityPlayingAnim(PlayerPedId(), Config.GolfDict, animName, 3) then
                     TaskPlayAnim(PlayerPedId(), Config.GolfDict, animName, 8.0, -1000.0, -1, 33, 0.0, false, false, false)
                 end
-
                 local swingAnim = AquiverGolf.Swing.Power
                 if swingAnim > 0.98 then
                     swingAnim = 0.98
                 end
                 SetEntityAnimCurrentTime(PlayerPedId(), Config.GolfDict, animName, swingAnim)
-
                 if not AquiverGolf.Swing.ReachedMax then
                     if AquiverGolf.Swing.Power < 1.0 then
                         AquiverGolf.Swing.Power = AquiverGolf.Swing.Power + AquiverGolf.Swing.SwingStrength
@@ -1275,15 +1243,11 @@ RegisterNUICallback('closeUI',function()
     SetNuiFocus(false, false)
 end)
 
-
-
-
-RegisterCommand('bark', function()
-    local Dict =  "random@peyote@dog"
-    local Anim = "wakeup_loop"
-
-    lib.requestAnimDict(Dict, 1000)
-    TaskPlayAnim(GetPlayerPed(-1), Dict, Anim, 2.0, 2.0, -1, 1, 0, false, false, false)
-  
-
-end)
+-- RegisterCommand('bark', function()
+--     local Dict =  "random@peyote@dog"
+--     local Anim = "wakeup_loop"
+-- 
+--     lib.requestAnimDict(Dict, 1000)
+--     TaskPlayAnim(GetPlayerPed(-1), Dict, Anim, 2.0, 2.0, -1, 1, 0, false, false, false)
+-- 
+-- end)
